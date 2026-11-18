@@ -4,6 +4,8 @@
 
 **Live demo:** https://buddy-ai-eight.vercel.app
 
+![Buddy AI sign-in screen](docs/screenshot.png)
+
 
 ## What it does
 
@@ -17,15 +19,23 @@
 
 ## How it works
 
-```
-Stream Video call ──webhooks──▶ /api/webhook
-   call.session_started        → connect the OpenAI realtime agent into the call
-   call.session_ended          → mark meeting as processing
-   call.transcription_ready    → save transcript URL, fire Inngest event
-   call.recording_ready        → save recording URL
-
-Inngest: meetings/processing
-   fetch transcript → parse (JSONL) → attach speaker names → summarizer agent → save summary
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant S as Stream Video
+    participant W as /api/webhook
+    participant O as OpenAI Realtime
+    participant J as Inngest job
+    participant DB as Postgres
+    U->>S: join call (token from tRPC)
+    S->>W: call.session_started
+    W->>O: connect agent with the meeting's instructions
+    S->>W: call.session_ended
+    W->>DB: status = processing
+    S->>W: call.transcription_ready
+    W->>J: send meetings/processing
+    J->>J: fetch transcript, add speakers, summarize
+    J->>DB: save summary, status = completed
 ```
 
 1. The client asks the server (tRPC) for a Stream Video token and joins the call.
