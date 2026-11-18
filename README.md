@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Buddy AI
 
-## Getting Started
+**Video meetings with an AI participant.** Create custom AI agents, start a call with one, and get a transcript and an AI-written summary when the meeting ends.
 
-First, run the development server:
+**Live demo:** https://buddy-ai-eight.vercel.app
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+## What it does
+
+- **Custom AI agents.** Create an agent with a name and instructions that define how it behaves in a meeting.
+- **Real-time calls.** Start a video call; the agent joins the call and talks with you using OpenAI's realtime API.
+- **Meeting lifecycle.** Each meeting moves through `upcoming → active → processing → completed` (or `cancelled`).
+- **Transcript and recording.** When the call ends, the transcript and recording are attached to the meeting.
+- **AI summary.** A background job turns the transcript into a readable summary with sections and timestamp ranges.
+- **Dashboard.** Searchable, filterable, paginated tables of agents and meetings.
+- **Auth.** Email sign-in plus Google and GitHub, with better-auth.
+
+## How it works
+
+```
+Stream Video call ──webhooks──▶ /api/webhook
+   call.session_started        → connect the OpenAI realtime agent into the call
+   call.session_ended          → mark meeting as processing
+   call.transcription_ready    → save transcript URL, fire Inngest event
+   call.recording_ready        → save recording URL
+
+Inngest: meetings/processing
+   fetch transcript → parse (JSONL) → attach speaker names → summarizer agent → save summary
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. The client asks the server (tRPC) for a Stream Video token and joins the call.
+2. When the call session starts, the Stream webhook handler looks up the meeting and its agent and connects an **OpenAI realtime client** that uses the agent's instructions.
+3. When the transcript is ready, an **Inngest** function fetches it, resolves who spoke (users and agents), and runs a summarizer agent. The summary is stored on the meeting.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The webhook and background job are separate on purpose: the webhook responds fast, and the slower summarisation runs as a retryable job.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Tech stack
 
-## Learn More
+| Area | Tools |
+| --- | --- |
+| Framework | Next.js (App Router), React, TypeScript |
+| API | tRPC + TanStack Query, Zod |
+| Database | PostgreSQL on Neon, Drizzle ORM |
+| Auth | better-auth (email, Google, GitHub) |
+| Video and realtime AI | Stream Video SDK, OpenAI realtime API |
+| Background jobs | Inngest (with agent-kit for the summarizer) |
+| UI | Tailwind CSS, Radix UI / shadcn-style components, TanStack Table, nuqs for URL state |
 
-To learn more about Next.js, take a look at the following resources:
+## Run it locally
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+git clone https://github.com/Rakesh-27-git/Buddy-AI.git
+cd Buddy-AI
+npm install
+cp .env.example .env     # fill in the keys listed below
+npm run db:push          # create tables with Drizzle
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Run the Inngest dev server in another terminal (`npx inngest-cli@latest dev`). To receive Stream webhooks locally, expose port 3000 with ngrok and set that URL as the webhook in your Stream dashboard.
 
-## Deploy on Vercel
+Environment variables: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `NEXT_PUBLIC_STREAM_VIDEO_API_KEY`, `STREAM_VIDEO_SECRET_KEY`, `OPENAI_API_KEY`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Things I'd improve next
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Tests for the webhook handler and the transcript-processing job.
+- Showing the summary in the UI as soon as processing finishes.
+- Rate limits on agent creation and calls.
+
+## Author
+
+Built by [Rakesh Choudhary](https://github.com/Rakesh-27-git).
